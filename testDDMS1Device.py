@@ -9,8 +9,12 @@ import traceback
 import time
 
 
-USERNAME = "alyaselvia_VUfPw9"
-ACCESS_KEY = "J8f3xCpKwpHsqCEF8xWD"
+import bs_utils
+
+# Script debug single-device. Kredensial dari environment variable.
+bs_utils.require_credentials()
+USERNAME = bs_utils.USERNAME
+ACCESS_KEY = bs_utils.ACCESS_KEY
 APP_ID = "bs://db0d2fae4ab415d8051eec649a0cb566a89c424f"
 
 
@@ -82,8 +86,8 @@ def run_test(device_name, platform_version):
         options.set_capability("bstack:options", {
             "userName": USERNAME,
             "accessKey": ACCESS_KEY,
-            "projectName": "Mobile Demo",
-            "buildName": "Build Test",
+            "projectName": bs_utils.PROJECT_NAME,
+            "buildName": bs_utils.BUILD_NAME,
             "sessionName": f"Login Test - {device_name}"
         })
 
