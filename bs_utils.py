@@ -1,26 +1,10 @@
-"""
-Helper bersama untuk semua test Appium + BrowserStack.
-
-Tujuan:
-1. Mengambil kredensial dari environment variable (bukan hardcode).
-2. Menyediakan build name yang unik per run (dipakai untuk grouping di
-   dashboard BrowserStack maupun di report PDF).
-3. Merekam hasil tiap device ke file JSON (results/) supaya bisa
-   diagregasi menjadi laporan PDF setelah semua thread selesai.
-
-Setiap thread menulis ke file-nya sendiri sehingga tidak perlu lock.
-"""
-
 import os
 import re
 import json
 import threading
 from datetime import datetime
 
-# ---------------------------------------------------------------------------
 # Kredensial & konfigurasi build (diambil dari environment variable)
-# ---------------------------------------------------------------------------
-
 USERNAME = os.getenv("BROWSERSTACK_USERNAME")
 ACCESS_KEY = os.getenv("BROWSERSTACK_ACCESS_KEY")
 
