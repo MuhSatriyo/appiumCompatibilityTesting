@@ -113,15 +113,9 @@ pipeline {
                              allowEmptyArchive: true,
                              fingerprint: true
 
-            // Tampilkan report HTML langsung di sidebar build (butuh plugin "HTML Publisher")
-            publishHTML(target: [
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Compatibility Test Report'
-            ])
+            // Catatan: report HTML/PDF bisa diunduh dari menu "Artifacts" build.
+            // Kalau ingin report HTML tampil langsung di sidebar build, install
+            // plugin "HTML Publisher", lalu tambahkan kembali blok publishHTML.
         }
         cleanup {
             sh 'rm -rf ${VENV} || true'
