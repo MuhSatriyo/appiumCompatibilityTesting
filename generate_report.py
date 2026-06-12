@@ -6,15 +6,20 @@ import json
 import html
 import argparse
 import subprocess
+import tempfile
 from datetime import datetime
 
 
-def load_results(results_dir):
+def load_results(results_dir, suites_filter=None):
     items = []
     for path in sorted(glob.glob(os.path.join(results_dir, "*.json"))):
         try:
             with open(path, encoding="utf-8") as f:
-                items.append(json.load(f))
+                rec = json.load(f)
+            if suites_filter:
+                if rec.get("suite") not in suites_filter:
+                    continue
+            items.append(rec)
         except Exception as e:
             print(f"WARN: gagal baca {path}: {e}", file=sys.stderr)
     return items
@@ -29,7 +34,6 @@ def fmt_duration(seconds):
 
 
 def donut_svg(pass_rate):
-    """SVG donut sederhana (static, aman untuk wkhtmltopdf)."""
     r = 54
     circ = 2 * 3.14159265 * r
     passed_len = circ * (pass_rate / 100.0)
@@ -54,16 +58,14 @@ def status_badge(status):
     return '<span class="badge badge-fail">FAILED</span>'
 
 
-def build_html(items, build_name):
+def build_html(items, build_name, suites_label):
     total = len(items)
     passed = sum(1 for i in items if i.get("status") == "passed")
     failed = total - passed
     pass_rate = (passed / total * 100) if total else 0
     total_duration = sum(i.get("duration_seconds", 0) or 0 for i in items)
-
     generated = datetime.now().strftime("%d %B %Y, %H:%M:%S")
 
-    # group per suite
     suites = {}
     for i in items:
         suites.setdefault(i.get("suite", "Unknown"), []).append(i)
@@ -90,8 +92,8 @@ def build_html(items, build_name):
             tr.append(f"""
               <tr>
                 <td class="c-num">{idx}</td>
-                <td>{html.escape(r.get("device_name","-"))}</td>
-                <td class="c-mid">Android {html.escape(str(r.get("platform_version","-")))}</td>
+                <td>{html.escape(r.get("device_name", "-"))}</td>
+                <td class="c-mid">Android {html.escape(str(r.get("platform_version", "-")))}</td>
                 <td class="c-mid">{status_badge(r.get("status"))}</td>
                 <td class="c-mid">{fmt_duration(r.get("duration_seconds"))}</td>
                 <td class="c-mid">{session_cell}</td>
@@ -129,15 +131,12 @@ def build_html(items, build_name):
     font-family: "Helvetica Neue", Arial, sans-serif;
     color: #1d2733; margin: 0; font-size: 12px; line-height: 1.45;
   }}
-  .header {{
-    background: #0f2747; color: #fff; padding: 26px 32px;
-  }}
+  .header {{ background: #0f2747; color: #fff; padding: 26px 32px; }}
   .header h1 {{ margin: 0; font-size: 22px; letter-spacing: .2px; }}
   .header .sub {{ margin-top: 6px; font-size: 12px; color: #b9c6da; }}
   .header .build {{ margin-top: 10px; font-size: 12px; }}
   .header .build b {{ color: #fff; }}
   .wrap {{ padding: 24px 32px; }}
-
   .summary {{ width: 100%; border-collapse: collapse; margin-bottom: 8px; }}
   .summary td {{ vertical-align: middle; }}
   .cards td {{ padding: 0 6px; }}
@@ -151,7 +150,6 @@ def build_html(items, build_name):
   .num-pass {{ color: #1f9d57; }}
   .num-fail {{ color: #d23a3a; }}
   .num-total {{ color: #0f2747; }}
-
   .suite {{ margin-top: 22px; page-break-inside: avoid; }}
   .suite-head {{
     display: table; width: 100%; border-bottom: 2px solid #0f2747;
@@ -165,7 +163,6 @@ def build_html(items, build_name):
   }}
   .app-id {{ display: block; font-size: 9.5px; color: #9aa6b4; margin-top: 4px;
             font-family: monospace; }}
-
   table.grid {{ width: 100%; border-collapse: collapse; }}
   table.grid th {{
     background: #f2f5f9; text-align: left; padding: 8px 10px;
@@ -184,10 +181,8 @@ def build_html(items, build_name):
   }}
   .badge-pass {{ background: #e6f6ec; color: #1f9d57; }}
   .badge-fail {{ background: #fdeaea; color: #d23a3a; }}
-  .err {{ color: #b23636; font-family: monospace; font-size: 10px;
-         word-break: break-word; }}
+  .err {{ color: #b23636; font-family: monospace; font-size: 10px; word-break: break-word; }}
   a {{ color: #1565c0; text-decoration: none; }}
-
   .footer {{ margin-top: 28px; padding-top: 10px; border-top: 1px solid #e4e9f0;
             font-size: 10px; color: #9aa6b4; text-align: center; }}
 </style>
@@ -195,10 +190,9 @@ def build_html(items, build_name):
 <body>
   <div class="header">
     <h1>Laporan Compatibility Testing &mdash; Appium &times; BrowserStack</h1>
-    <div class="sub">Automated Mobile Login Test Report</div>
+    <div class="sub">Suite: {html.escape(suites_label)}</div>
     <div class="build">Build: <b>{html.escape(build_name)}</b> &nbsp;|&nbsp; Dibuat: {generated}</div>
   </div>
-
   <div class="wrap">
     <table class="summary">
       <tr>
@@ -228,39 +222,58 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--out", default="report.pdf")
-    ap.add_argument("--html-out", default="report.html")
     ap.add_argument("--build-name", default=os.getenv("BUILD_NAME", "Local Run"))
+    ap.add_argument(
+        "--suites", nargs="*", default=None,
+        help="Nama suite yang dimasukkan ke PDF. Kosong = semua suite."
+    )
     args = ap.parse_args()
 
-    items = load_results(args.results_dir)
+    suites_filter = set(args.suites) if args.suites else None
+    suites_label  = " & ".join(sorted(args.suites)) if args.suites else "All Suites"
+
+    items = load_results(args.results_dir, suites_filter)
     if not items:
-        print(f"ERROR: tidak ada hasil di '{args.results_dir}'. "
-              "Pastikan test sudah dijalankan.", file=sys.stderr)
+        print(
+            f"ERROR: tidak ada hasil untuk suite {args.suites} di '{args.results_dir}'.",
+            file=sys.stderr
+        )
         sys.exit(1)
 
-    html_str = build_html(items, args.build_name)
-    with open(args.html_out, "w", encoding="utf-8") as f:
-        f.write(html_str)
-    print(f"HTML report: {args.html_out}")
+    html_str = build_html(items, args.build_name, suites_label)
 
-    cmd = [
-        "wkhtmltopdf",
-        "--enable-local-file-access",
-        "--page-size", "A4",
-        "--margin-top", "12mm", "--margin-bottom", "14mm",
-        "--margin-left", "10mm", "--margin-right", "10mm",
-        "--footer-right", "Halaman [page] dari [topage]",
-        "--footer-font-size", "8",
-        "--footer-spacing", "4",
-        args.html_out, args.out,
-    ]
-    print("Convert ke PDF:", " ".join(cmd))
+    # Tulis HTML ke file temp, langsung dihapus setelah PDF jadi
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".html", encoding="utf-8", delete=False
+    ) as tmp:
+        tmp.write(html_str)
+        tmp_path = tmp.name
+
     try:
-        subprocess.run(cmd, check=True)
-    except FileNotFoundError:
-        print("ERROR: wkhtmltopdf tidak ditemukan di PATH.", file=sys.stderr)
-        sys.exit(2)
-    print(f"PDF report: {args.out}")
+        cmd = [
+            "wkhtmltopdf",
+            "--enable-local-file-access",
+            "--page-size", "A4",
+            "--margin-top", "12mm", "--margin-bottom", "14mm",
+            "--margin-left", "10mm", "--margin-right", "10mm",
+            "--footer-right", "Halaman [page] dari [topage]",
+            "--footer-font-size", "8",
+            "--footer-spacing", "4",
+            tmp_path, args.out,
+        ]
+        print("Convert ke PDF:", " ".join(cmd))
+        try:
+            subprocess.run(cmd, check=True)
+        except FileNotFoundError:
+            print("ERROR: wkhtmltopdf tidak ditemukan di PATH.", file=sys.stderr)
+            sys.exit(2)
+        print(f"PDF report: {args.out}")
+    finally:
+        # Hapus file HTML temp tanpa gagal meski PDF-nya error
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
