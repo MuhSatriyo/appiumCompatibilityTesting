@@ -8,15 +8,26 @@ from datetime import datetime
 import traceback
 import time
 
+import bs_utils
 
-USERNAME = "alyaselvia_VUfPw9"
-ACCESS_KEY = "J8f3xCpKwpHsqCEF8xWD"
+# Kredensial & build name diambil dari environment variable (lihat bs_utils.py)
+bs_utils.require_credentials()
+USERNAME = bs_utils.USERNAME
+ACCESS_KEY = bs_utils.ACCESS_KEY
 APP_ID = "bs://1fadfcd687e44e760553febeb667e242149065ca"
+
+SUITE_NAME = "Prohace - Login"
+recorder = bs_utils.ResultRecorder(SUITE_NAME, APP_ID)
 
 
 def run_test(device_name, platform_version):
 
     driver = None
+    started_at = datetime.now()
+    status = "failed"
+    error = None
+    session_id = None
+    public_url = None
 
     try:
 
@@ -31,15 +42,17 @@ def run_test(device_name, platform_version):
         options.set_capability("bstack:options", {
             "userName": USERNAME,
             "accessKey": ACCESS_KEY,
-            "projectName": "Mobile Demo",
-            "buildName": "Build Test",
-            "sessionName": f"Login Test - {device_name}"
+            "projectName": bs_utils.PROJECT_NAME,
+            "buildName": bs_utils.BUILD_NAME,
+            "sessionName": f"Prohace Login - {device_name}"
         })
 
         driver = webdriver.Remote(
-            "https://hub.browserstack.com/wd/hub",
+            bs_utils.HUB_URL,
             options=options
         )
+
+        session_id, public_url = bs_utils.get_session_meta(driver)
 
         driver.implicitly_wait(10)
 
@@ -112,6 +125,7 @@ def run_test(device_name, platform_version):
         login_button.click()
 
         print(f"[PASSED] Login berhasil pada {device_name}")
+        status = "passed"
 
         try:
             driver.execute_script(
@@ -124,6 +138,7 @@ def run_test(device_name, platform_version):
 
     except Exception as e:
 
+        error = e
         print(f"[FAILED] {device_name}")
         print(str(e))
 
@@ -159,6 +174,16 @@ def run_test(device_name, platform_version):
 
     finally:
 
+        ended_at = datetime.now()
+        try:
+            recorder.record(
+                device_name, platform_version, status,
+                started_at, ended_at, error=error,
+                session_id=session_id, public_url=public_url,
+            )
+        except Exception as rec_err:
+            print(f"Record Error {device_name}: {rec_err}")
+
         if driver:
             try:
                 driver.quit()
@@ -180,15 +205,16 @@ devices = [
 ]
 
 
-with ThreadPoolExecutor(max_workers=len(devices)) as executor:
+if __name__ == "__main__":
+    with ThreadPoolExecutor(max_workers=len(devices)) as executor:
 
-    futures = [
-        executor.submit(run_test, device, version)
-        for device, version in devices
-    ]
+        futures = [
+            executor.submit(run_test, device, version)
+            for device, version in devices
+        ]
 
-    for future in futures:
-        try:
-            future.result()
-        except Exception as e:
-            print(f"Thread Error: {e}")
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Thread Error: {e}")
