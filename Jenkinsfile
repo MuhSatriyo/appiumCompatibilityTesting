@@ -39,11 +39,6 @@ pipeline {
         }
 
         stage('Run Tests (Parallel)') {
-            /*
-             * Kredensial di-inject sebagai environment variable; tidak pernah
-             * tampil di log. Kedua suite menulis hasil ke folder results/
-             * dengan nama file unik per (suite + device) sehingga aman paralel.
-             */
             steps {
                 withCredentials([usernamePassword(
                         credentialsId: 'browserstack-creds',
