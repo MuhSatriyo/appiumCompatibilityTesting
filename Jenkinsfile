@@ -53,7 +53,7 @@ pipeline {
                 sh '''
                     set -e
                     echo "== Membersihkan artefak run sebelumnya =="
-                    rm -rf results report.html report.pdf
+                    rm -rf results report.pdf
                     rm -f error_*.png page_source_*.xml before_username_*.png before_username_*.xml || true
 
                     echo "== Menyiapkan virtualenv & dependency =="
@@ -73,7 +73,6 @@ pipeline {
                         passwordVariable: 'BROWSERSTACK_ACCESS_KEY')]) {
 
                     script {
-                        // Bangun map paralel hanya untuk suite yang dicentang
                         def parallelJobs = [:]
 
                         if (params.Test_DDMS) {
@@ -106,15 +105,23 @@ pipeline {
 
         stage('Generate PDF Report') {
             steps {
-                sh '''
-                    set -e
-                    . ${VENV}/bin/activate
-                    python generate_report.py \
-                        --results-dir results \
-                        --build-name "${BUILD_NAME}" \
-                        --html-out report.html \
-                        --out report.pdf
-                '''
+                script {
+                    // Kumpulkan nama suite persis yang dipakai di hasil JSON
+                    def suiteArgs = []
+                    if (params.Test_DDMS)    suiteArgs << '"DDMS - Login"'
+                    if (params.Test_Prohace) suiteArgs << '"Prohace - Login"'
+                    def suitesFlag = suiteArgs.join(' ')
+
+                    sh """
+                        set -e
+                        . ${VENV}/bin/activate
+                        python generate_report.py \\
+                            --results-dir results \\
+                            --build-name "${BUILD_NAME}" \\
+                            --suites ${suitesFlag} \\
+                            --out report.pdf
+                    """
+                }
             }
         }
 
@@ -122,7 +129,7 @@ pipeline {
             steps {
                 script {
                     def failed = sh(
-                        script: '''grep -l '"status": "failed"' results/*.json 2>/dev/null | wc -l''',
+                        script: '''grep -rl '"status": "failed"' results/ 2>/dev/null | wc -l''',
                         returnStdout: true
                     ).trim()
                     echo "Device gagal: ${failed}"
@@ -136,12 +143,17 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'report.pdf, report.html, results/*.json, error_*.png, page_source_*.xml, before_username_*.png, before_username_*.xml',
+            // Hanya simpan report.pdf sebagai artefak build
+            archiveArtifacts artifacts: 'report.pdf',
                              allowEmptyArchive: true,
                              fingerprint: true
         }
         cleanup {
-            sh 'rm -rf ${VENV} || true'
+            // Hapus semua file sementara: venv, results JSON, screenshot, page source
+            sh '''
+                rm -rf ${VENV} results || true
+                rm -f error_*.png page_source_*.xml before_username_*.png before_username_*.xml || true
+            '''
         }
     }
 }
