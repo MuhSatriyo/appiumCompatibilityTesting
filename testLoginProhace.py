@@ -14,7 +14,7 @@ import bs_utils
 bs_utils.require_credentials()
 USERNAME = bs_utils.USERNAME
 ACCESS_KEY = bs_utils.ACCESS_KEY
-APP_ID = "bs://1fadfcd687e44e760553febeb667e242149065ca"
+APP_ID = "bs://b732a3279d6bbe6cb42272daf96b08ceda3b19c3"
 
 SUITE_NAME = "Prohace - Login"
 recorder = bs_utils.ResultRecorder(SUITE_NAME, APP_ID)
