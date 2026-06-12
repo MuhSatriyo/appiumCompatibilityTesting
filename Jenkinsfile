@@ -8,6 +8,7 @@ pipeline {
     }
 
     environment {
+        // Nama build unik per run -> jadi 1 build terpisah di dashboard BrowserStack
         BUILD_NAME            = "Jenkins ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         BROWSERSTACK_PROJECT  = "Mobile Compatibility Testing"
         VENV                  = ".venv"
@@ -39,28 +40,37 @@ pipeline {
         }
 
         stage('Run Tests (Parallel)') {
+            /*
+             * Kredensial di-inject sebagai environment variable; tidak pernah
+             * tampil di log. Kedua suite menulis hasil ke folder results/
+             * dengan nama file unik per (suite + device) sehingga aman paralel.
+             */
             steps {
                 withCredentials([usernamePassword(
                         credentialsId: 'browserstack-creds',
                         usernameVariable: 'BROWSERSTACK_USERNAME',
                         passwordVariable: 'BROWSERSTACK_ACCESS_KEY')]) {
 
-                    parallel(
-                        "Prohace Login": {
-                            sh '''
-                                set -e
-                                . ${VENV}/bin/activate
-                                python testLoginProhace.py
-                            '''
-                        },
-                        "DDMS Login": {
-                            sh '''
-                                set -e
-                                . ${VENV}/bin/activate
-                                python testLoginDDMS.py
-                            '''
-                        }
-                    )
+                    // parallel dibungkus script{} karena ini scripted-step
+                    // yang dipanggil di dalam steps{} (Declarative Pipeline).
+                    script {
+                        parallel(
+                            "Prohace Login": {
+                                sh '''
+                                    set -e
+                                    . ${VENV}/bin/activate
+                                    python testLoginProhace.py
+                                '''
+                            },
+                            "DDMS Login": {
+                                sh '''
+                                    set -e
+                                    . ${VENV}/bin/activate
+                                    python testLoginDDMS.py
+                                '''
+                            }
+                        )
+                    }
                 }
             }
         }
