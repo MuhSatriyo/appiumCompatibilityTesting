@@ -14,7 +14,7 @@ import bs_utils
 bs_utils.require_credentials()
 USERNAME = bs_utils.USERNAME
 ACCESS_KEY = bs_utils.ACCESS_KEY
-APP_ID = "bs://db0d2fae4ab415d8051eec649a0cb566a89c424f"
+APP_ID = "bs://b732a3279d6bbe6cb42272daf96b08ceda3b19c3"
 
 SUITE_NAME = "DDMS - Login"
 recorder = bs_utils.ResultRecorder(SUITE_NAME, APP_ID)
