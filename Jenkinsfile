@@ -1,6 +1,19 @@
 pipeline {
 
     agent any
+    parameters {
+        booleanParam(
+            name: 'Test_DDMS',
+            defaultValue: true,
+            description: 'Jalankan test login untuk aplikasi DDMS (9 device Android paralel)'
+        )
+        booleanParam(
+            name: 'Test_Prohace',
+            defaultValue: true,
+            description: 'Jalankan test login untuk aplikasi Prohace (9 device Android paralel)'
+        )
+    }
+
     options {
         timestamps()
         timeout(time: 60, unit: 'MINUTES')
@@ -8,13 +21,26 @@ pipeline {
     }
 
     environment {
-        // Nama build unik per run -> jadi 1 build terpisah di dashboard BrowserStack
-        BUILD_NAME            = "Jenkins ${env.JOB_NAME} #${env.BUILD_NUMBER}"
-        BROWSERSTACK_PROJECT  = "Mobile Compatibility Testing"
-        VENV                  = ".venv"
+        BUILD_NAME           = "Jenkins ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+        BROWSERSTACK_PROJECT = "Mobile Compatibility Testing"
+        VENV                 = ".venv"
     }
 
     stages {
+
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    if (!params.Test_DDMS && !params.Test_Prohace) {
+                        error('Minimal satu parameter harus dicentang: Test_DDMS atau Test_Prohace.')
+                    }
+                    def suites = []
+                    if (params.Test_DDMS)    suites << 'Test_DDMS'
+                    if (params.Test_Prohace) suites << 'Test_Prohace'
+                    echo "Suite yang akan dijalankan: ${suites.join(', ')}"
+                }
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -39,37 +65,40 @@ pipeline {
             }
         }
 
-        stage('Run Tests (Parallel)') {
-            /*
-             * Kredensial di-inject sebagai environment variable; tidak pernah
-             * tampil di log. Kedua suite menulis hasil ke folder results/
-             * dengan nama file unik per (suite + device) sehingga aman paralel.
-             */
+        stage('Run Tests') {
             steps {
                 withCredentials([usernamePassword(
                         credentialsId: 'browserstack-creds',
                         usernameVariable: 'BROWSERSTACK_USERNAME',
                         passwordVariable: 'BROWSERSTACK_ACCESS_KEY')]) {
 
-                    // parallel dibungkus script{} karena ini scripted-step
-                    // yang dipanggil di dalam steps{} (Declarative Pipeline).
                     script {
-                        parallel(
-                            "Prohace Login": {
-                                sh '''
-                                    set -e
-                                    . ${VENV}/bin/activate
-                                    python testLoginProhace.py
-                                '''
-                            },
-                            "DDMS Login": {
+                        // Bangun map paralel hanya untuk suite yang dicentang
+                        def parallelJobs = [:]
+
+                        if (params.Test_DDMS) {
+                            parallelJobs['DDMS Login'] = {
+                                echo "[Test_DDMS] Memulai 9 device paralel..."
                                 sh '''
                                     set -e
                                     . ${VENV}/bin/activate
                                     python testLoginDDMS.py
                                 '''
                             }
-                        )
+                        }
+
+                        if (params.Test_Prohace) {
+                            parallelJobs['Prohace Login'] = {
+                                echo "[Test_Prohace] Memulai 9 device paralel..."
+                                sh '''
+                                    set -e
+                                    . ${VENV}/bin/activate
+                                    python testLoginProhace.py
+                                '''
+                            }
+                        }
+
+                        parallel parallelJobs
                     }
                 }
             }
@@ -90,7 +119,6 @@ pipeline {
         }
 
         stage('Evaluate Result') {
-            // Tandai build UNSTABLE bila ada device yang gagal (tanpa bikin error).
             steps {
                 script {
                     def failed = sh(
@@ -108,14 +136,9 @@ pipeline {
 
     post {
         always {
-            // Simpan PDF, HTML, JSON hasil, screenshot & page source error sebagai artefak build
             archiveArtifacts artifacts: 'report.pdf, report.html, results/*.json, error_*.png, page_source_*.xml, before_username_*.png, before_username_*.xml',
                              allowEmptyArchive: true,
                              fingerprint: true
-
-            // Catatan: report HTML/PDF bisa diunduh dari menu "Artifacts" build.
-            // Kalau ingin report HTML tampil langsung di sidebar build, install
-            // plugin "HTML Publisher", lalu tambahkan kembali blok publishHTML.
         }
         cleanup {
             sh 'rm -rf ${VENV} || true'
